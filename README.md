@@ -77,6 +77,15 @@ void launchKernel(bool Switch1, int Variable2, MyEnum Enum3, int arg1, float* ar
 
 
 
+The code behind this repository was used in the following projects:
+
+- Fast Neural Representations for Direct Volume Rendering (https://github.com/shamanDevel/fV-SRN)
+- Differentiable Direct Volume Rendering (https://github.com/shamanDevel/DiffDVR)
+
+For future projects and less code duplications, I pulled the code out and into this library now.
+
+
+
 ## Requirements
 
  - CMake 3.4 or higher
@@ -91,7 +100,8 @@ void launchKernel(bool Switch1, int Variable2, MyEnum Enum3, int arg1, float* ar
 
 - Clone this repository or add it as a submodule
 - Use `add_subdirectory` in CMake to register this project
-- Link against `ckl` and enjoy. This sets up the include directory and links against the library
+- Link against the target `ckl` and enjoy. This sets up the include directory and links against the library
+  CMake `target_link_libraries(your-library PRIVATE ckl)`
 
 CMake Options:
 

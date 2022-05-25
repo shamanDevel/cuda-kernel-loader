@@ -272,13 +272,7 @@ public:
         Args... args)
     {
         //fetch addresses of the arguments
-        //https://stackoverflow.com/a/58599079/1786598
-        void* argv[sizeof...(args)];
-        using unused = int[];
-        int j = 0;
-        (void)unused {
-            0, (argv[j++] = std::addressof(args), 0)...
-        };
+        void* argv[] = { std::addressof(args)... };
 
         //launch
         call(gridDim, 1, 1, blockDim, 1, 1, sharedMemBytes, hStream, argv);
