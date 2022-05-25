@@ -24,6 +24,7 @@ set(CKL_TEST_FILES
     test_code_generation.cpp
     test_loaders.cpp
     kernels/axpy.cuh
+    kernels/unary.cuh
     )
 
 add_executable(ckl-tests
@@ -65,5 +66,6 @@ cmrc_add_resource_library(
     WHENCE kernels
 
 	kernels/axpy.cuh
+    kernels/unary.cuh
 	)
 target_link_libraries(ckl-tests PRIVATE ckl-tests::rc)
