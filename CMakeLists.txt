@@ -18,7 +18,7 @@ endif()
 cmake_policy(SET CMP0127 NEW)
 
 # Extract project version from source
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/ckl/internal_common.h"
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/include/ckl/common.h"
      ckl_version_defines REGEX "#define CKL_VERSION_(MAJOR|MINOR|PATCH) ")
 
 foreach(ver ${ckl_version_defines})
@@ -96,15 +96,18 @@ find_package(CUDAToolkit REQUIRED)
 
 if(COMMAND CUDA_SELECT_NVCC_ARCH_FLAGS)
     CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
-    STRING(REPLACE ";" "=" ckl_ARCH_FLAGS2 "${ARCH_FLAGS}")
+    STRING(LENGTH "${ARCH_FLAGS}" ckl_ARCH_FLAGS_LENGTH)
+    MATH(EXPR ckl_ARCH_FLAGS_LENGTH2 "${ckl_ARCH_FLAGS_LENGTH} - 2")
+    STRING(SUBSTRING "${ARCH_FLAGS}" ${ckl_ARCH_FLAGS_LENGTH2} -1 ckl_ARCH_FLAGS2)
+    set(ckl_ARCH_FLAGS3 "--gpu-architecture=compute_${ckl_ARCH_FLAGS2}")
     set(ckl_requires_arch_flags OFF)
 else()
     set(ckl_requires_arch_flags ON)
 endif()
 
-cmake_dependent_option(CKL_ARCH_FLAGS "CUDA Architecture specification" "-gencode=arch=compute_75,code=sm_75" "ckl_requires_arch_flags" ${ckl_ARCH_FLAGS2})
+cmake_dependent_option(CKL_ARCH_FLAGS "CUDA Architecture specification" "--gpu-architecture=compute_75" "ckl_requires_arch_flags" ${ckl_ARCH_FLAGS3})
 
-list(APPEND ckl_CUDA_NVCC_FLAGS ${CKL_ARCH_FLAGS} "-std=c++17" "--use_fast_math" "--generate-line-info" "–Xptxas" "-v")
+list(APPEND ckl_CUDA_NVCC_FLAGS ${CKL_ARCH_FLAGS} "-std=c++17" "--use_fast_math" "--generate-line-info" "-Xptxas" "-v")
 message(STATUS "ckl compilation flags: ${ckl_CUDA_NVCC_FLAGS}")
 
 foreach(t ${ckl_CUDA_NVCC_FLAGS})
@@ -114,8 +117,9 @@ configure_file(src/ckl_nvcc_args.inl.in ckl_nvcc_args.inl)
 
 # Files
 set(CKL_HEADERS
-    include/ckl/internal_common.h
-    include/ckl/kernel_loader.h)
+    include/ckl/common.h
+    include/ckl/kernel_loader.h
+    include/ckl/errors.h)
     
 set(CKL_SOURCES
     src/kernel_loader.cpp

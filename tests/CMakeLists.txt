@@ -19,9 +19,12 @@ endif()
 
 # Full set of test files
 set(CKL_TEST_FILES
-    test1.cpp
     main.cpp
-    catch.hpp)
+    catch.hpp
+    test_code_generation.cpp
+    test_loaders.cpp
+    kernels/axpy.cuh
+    )
 
 add_executable(ckl-tests
     ${CKL_TEST_FILES})

@@ -3,13 +3,12 @@
 #include <cuda.h>
 #include <filesystem>
 #include <map>
-#include <fstream>
-#include <functional>
 #include <optional>
 #include <vector>
 #include <regex>
+#include <memory>
 
-#include "internal_common.h"
+#include "common.h"
 
 CKL_NAMESPACE_BEGIN
 
@@ -40,6 +39,11 @@ public:
     virtual void populate(std::vector<NameAndContent>& files) = 0;
 };
 
+/**
+ * FileLoader implementation that reads all files recursively
+ * starting from a root path.
+ * Optionally, the files that are included can be filtered using a regex expression.
+ */
 class FilesystemLoader : public IFileLoader
 {
     const std::filesystem::path root_;
@@ -47,13 +51,28 @@ class FilesystemLoader : public IFileLoader
     const std::regex regex_;
 
 public:
-    virtual ~FilesystemLoader() = default;
-
-    explicit FilesystemLoader(const std::filesystem::path& root)
-        : root_(root), hasRegex_(false)
+    explicit FilesystemLoader(std::filesystem::path root)
+        : root_(std::move(root)), hasRegex_(false)
     {}
-    FilesystemLoader(const std::filesystem::path& root, const std::string& regex)
-        : root_(root), hasRegex_(true), regex_(regex)
+    FilesystemLoader(std::filesystem::path root, const std::string& regex)
+        : root_(std::move(root)), hasRegex_(true), regex_(regex)
+    {}
+
+    void populate(std::vector<NameAndContent>& files) override;
+};
+
+/**
+ * Concatenates multiple file loaders.
+ * This way, multiple source roots (if using FilesystemLoader) can be used
+ * together.
+ */
+class ConcatinatingLoader : public IFileLoader
+{
+    const std::vector<std::shared_ptr<IFileLoader>> children_;
+
+public:
+    explicit ConcatinatingLoader(std::vector<std::shared_ptr<IFileLoader>> children)
+        : children_(std::move(children))
     {}
 
     void populate(std::vector<NameAndContent>& files) override;
@@ -133,6 +152,137 @@ public:
      * or '0' if not found.
      */
     [[nodiscard]] CUdeviceptr constant(const std::string& name) const;
+
+private:
+    void fillConstantMemory(const std::string& name, const void* dataHost, size_t size, bool async, CUstream stream);
+
+public:
+    /**
+     * Fills the constant memory with name 'name'
+     * with the data provided in 'data' on the host/cpu.
+     *
+     * Effectively calls KernelFunction::constant() to fetch the address
+     * of the constant variable and then calls cuMemcpyHtoD to copy
+     * the host memory to the device memory.
+     *
+     * If an error occurs (constnat variable not found or illegal memcpy, an exception is thrown)
+     *
+     * \param name the name of the constant variable
+     * \param data the instance to copy into the constant variable
+     */
+    template<typename T>
+    void fillConstantMemorySync(const std::string& name, const T& data)
+    {
+        fillConstantMemory(name, &data, sizeof(T), false, nullptr);
+    }
+
+    /**
+     * Fills the constant memory with name 'name'
+     * with an array of variables provided in 'data' on the host/cpu.
+     *
+     * Effectively calls KernelFunction::constant() to fetch the address
+     * of the constant variable and then calls cuMemcpyHtoD to copy
+     * the host memory to the device memory.
+     *
+     * If an error occurs (constnat variable not found or illegal memcpy, an exception is thrown)
+     *
+     * \param name the name of the constant variable
+     * \param dataArray the pointer to first entry in the array to copy
+     * \param size the number of entries in the array
+     */
+    template<typename T>
+    void fillConstantMemorySync(const std::string& name, const T* dataArray, size_t size)
+    {
+        fillConstantMemory(name, dataArray, sizeof(T)*size, false, nullptr);
+    }
+
+    /**
+     * Fills the constant memory with name 'name'
+     * with the data provided in 'data' on the host/cpu.
+     * This is the async version of KernelFunction::fillConstantMemorySync!
+     *
+     * Effectively calls KernelFunction::constant() to fetch the address
+     * of the constant variable and then calls cuMemcpyHtoD to copy
+     * the host memory to the device memory.
+     *
+     * If an error occurs (constnat variable not found or illegal memcpy, an exception is thrown)
+     *
+     * \param name the name of the constant variable
+     * \param data the instance to copy into the constant variable
+     * \param stream the cuda stream for tracking the asynchronous memcopy
+     */
+    template<typename T>
+    void fillConstantMemoryAsync(const std::string& name, const T& data, CUstream stream)
+    {
+        fillConstantMemory(name, &data, sizeof(T), true, stream);
+    }
+
+    /**
+     * Fills the constant memory with name 'name'
+     * with an array of variables provided in 'data' on the host/cpu.
+     * This is the async version of KernelFunction::fillConstantMemorySync!
+     *
+     * Effectively calls KernelFunction::constant() to fetch the address
+     * of the constant variable and then calls cuMemcpyHtoD to copy
+     * the host memory to the device memory.
+     *
+     * If an error occurs (constnat variable not found or illegal memcpy, an exception is thrown)
+     *
+     * \param name the name of the constant variable
+     * \param dataArray the pointer to first entry in the array to copy
+     * \param size the number of entries in the array
+     * \param stream the cuda stream for tracking the asynchronous memcopy
+     */
+    template<typename T>
+    void fillConstantMemoryAsync(const std::string& name, const T* dataArray, size_t size, CUstream stream)
+    {
+        fillConstantMemory(name, dataArray, sizeof(T) * size, true, stream);
+    }
+
+private:
+    void call(unsigned int gridDimX,
+        unsigned int gridDimY,
+        unsigned int gridDimZ,
+        unsigned int blockDimX,
+        unsigned int blockDimY,
+        unsigned int blockDimZ,
+        unsigned int sharedMemBytes,
+        CUstream hStream,
+        void** kernelParams);
+
+public:
+    /**
+     * Launches the kernel with a 1D grid
+     * of 'gridDim' blocks with 'blockDim' threads per block.
+     * Per block, 'sharedMemBytes' of shared memory is dynamically specified (often zero),
+     * and the kernel is added to the stream 'hStream'.
+     * The arguments to the kernel are specified in the variadic template parameter.
+     *
+     * \param gridDim the grid dimension, i.e. number of blocks
+     * \param blockDim the block dimension, i.e. number of threads per block.
+     *    See also KernelFunction::bestBlockSize()
+     * \param sharedMemBytes the amount of dynamic shared memory (often zero)
+     * \param hStream the stream to enqueue this kernel invocation
+     * \param args the arguments passed to the kernel
+     */
+    template<typename... Args>
+    void call(
+        unsigned int gridDim, unsigned int blockDim, 
+        unsigned int sharedMemBytes, CUstream hStream,
+        Args... args)
+    {
+        //fetch addresses of the arguments
+        //https://stackoverflow.com/a/58599079/1786598
+        void* argv[sizeof...(args)];
+        using unused = int[];
+        int j = 0;
+        (void)unused {
+            0, (argv[j++] = std::addressof(args), 0)...
+        };
+
+        //launch
+        call(gridDim, 1, 1, blockDim, 1, 1, sharedMemBytes, hStream, argv);
+    }
 };
 
 /**
@@ -255,8 +405,19 @@ public:
     [[nodiscard]] std::optional<KernelFunction> getKernel(
         const std::string& kernelName,
         const std::string& sourceCode,
-        const std::vector<std::string>& constantNames,
+        const std::vector<std::string>& constantNames = {},
         int flags = CompileThrowOnError);
+
+    /**
+     * Constructs the source code to be passed as 'sourceCode' argument to
+     * KernelLoader::getKernel, if just the specified file
+     * should be used as the main file.
+     * Note that this file must be available in the file locators.
+     *
+     * Effectively returns
+     * <code>#include "{filename}"</code>
+     */
+    static std::string MainFile(const std::string& filename);
 
 private:
 

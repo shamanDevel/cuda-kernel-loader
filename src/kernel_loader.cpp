@@ -8,6 +8,7 @@
 #include <mutex>
 
 #include "sha1.h"
+#include <ckl/errors.h>
 
 CKL_NAMESPACE_BEGIN
 
@@ -21,9 +22,8 @@ static void throwOnError(CUresult err, const char* file, int line)
         cuGetErrorString(err, &pStr);
         const char* pName;
         cuGetErrorName(err, &pName);
-        std::stringstream ss;
-        ss << "Cuda error " << pName << " at " << file << ":" << line << " : " << pStr;
-        throw std::runtime_error(ss.str().c_str());
+        throw ckl::cuda_error("CUDA error %s at %s:%d : %s",
+            pName, file, line, pStr);
     }
 }
 #define CU_SAFE_CALL( err ) throwOnError( err, __FILE__, __LINE__ )
@@ -31,9 +31,8 @@ static void throwOnError(CUresult err, const char* file, int line)
 static void throwOnNvrtcError(nvrtcResult result, const char* file, const int line)
 {
     if (result != NVRTC_SUCCESS) {
-        std::stringstream ss;
-        ss << "NVRTC error at " << file << ":" << line << " : " << nvrtcGetErrorString(result);
-        throw std::runtime_error(ss.str().c_str());
+        throw ckl::cuda_error("NVRTC error at %s:%d : %s",
+            file, line, nvrtcGetErrorString(result));
     }
 }
 #define NVRTC_SAFE_CALL( err ) throwOnNvrtcError( err, __FILE__, __LINE__ )
@@ -70,14 +69,19 @@ void FilesystemLoader::populate(std::vector<NameAndContent>& files)
     }
 }
 
+void ConcatinatingLoader::populate(std::vector<NameAndContent>& files)
+{
+    for (const auto& l : children_)
+        l->populate(files);
+}
 
 
 detail::KernelStorage::KernelStorage(const std::string& kernelName,
-    const std::vector<NameAndContent>& includeFiles,
-    const std::string& source,
-    const std::vector<std::string>& constantNames,
-    const std::vector<const char*>& compileArgs,
-    bool verbose)
+                                     const std::vector<NameAndContent>& includeFiles,
+                                     const std::string& source,
+                                     const std::vector<std::string>& constantNames,
+                                     const std::vector<const char*>& compileArgs,
+                                     bool verbose)
         : module(nullptr)
         , function(nullptr)
         , minGridSize(0)
@@ -143,7 +147,7 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
         printSourceCode(source);
         if (!verbose) std::cout << log.data();
         std::string msg = std::string("Failed to compile kernel:\n") + log.data();
-        throw std::runtime_error(msg.c_str());
+        throw ckl::cuda_error(msg.c_str());
     }
 
     //optain PTX
@@ -152,9 +156,11 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
     this->ptxData.resize(ptxSize);
     NVRTC_SAFE_CALL(nvrtcGetPTX(prog, this->ptxData.data()));
 
-    ////test
-    //std::string ptxStr(this->ptxData.begin(), this->ptxData.end());
-    //std::cout << "\nPTX:\n" << ptxStr << "\n" << std::endl;
+#if 0
+    //test
+    std::string ptxStr(this->ptxData.begin(), this->ptxData.end());
+    std::cout << "\nPTX:\n" << ptxStr << "\n" << std::endl;
+#endif
 
     //get machine name
     const char* machineName;
@@ -333,6 +339,29 @@ CUdeviceptr KernelFunction::constant(const std::string& name) const
         return it->second;
 }
 
+void KernelFunction::fillConstantMemory(const std::string& name, const void* dataHost, size_t size, bool async,
+    CUstream stream)
+{
+    CUdeviceptr ptr = constant(name);
+    if (ptr == 0)
+        throw cuda_error("Constant variable with name '%s' not found", name);
+
+    if (async) 
+    {
+        CU_SAFE_CALL(cuMemcpyHtoDAsync(ptr, dataHost, size, stream));
+    }
+    else
+    {
+        CU_SAFE_CALL(cuMemcpyHtoD(ptr, dataHost, size));
+    }
+}
+
+void KernelFunction::call(unsigned gridDimX, unsigned gridDimY, unsigned gridDimZ, unsigned blockDimX,
+    unsigned blockDimY, unsigned blockDimZ, unsigned sharedMemBytes, CUstream hStream, void** kernelParams)
+{
+    CU_SAFE_CALL(cuLaunchKernel(fun(), gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, nullptr));
+}
+
 
 KernelLoader::KernelLoader()
 {
@@ -466,6 +495,11 @@ std::optional<KernelFunction> KernelLoader::getKernel(
         //kernel found, return immediately
         return KernelFunction(it->second);
     }
+}
+
+std::string KernelLoader::MainFile(const std::string& filename)
+{
+    return "#include \"" + filename + "\"\n";
 }
 
 
