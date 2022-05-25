@@ -37,8 +37,6 @@ set_target_properties(ckl-tests PROPERTIES
 
 target_link_libraries(ckl-tests
     PRIVATE ckl::ckl CUDA::cudart)
-target_include_directories(ckl-tests
-    PRIVATE CUDAToolkit_INCLUDE_DIRS)
 
 # Compile with compiler warnings turned on
 if(MSVC)
@@ -55,3 +53,17 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "(GNU|Intel|Clang)" AND NOT CKL_CUDA_TESTS)
               -Wnon-virtual-dtor)
 endif()
 
+# embedded kernels
+file(DOWNLOAD "https://raw.githubusercontent.com/vector-of-bool/cmrc/master/CMakeRC.cmake"
+				"${CMAKE_BINARY_DIR}/CMakeRC.cmake")
+include("${CMAKE_BINARY_DIR}/CMakeRC.cmake")
+cmrc_add_resource_library(
+	ckl-tests-kernels
+
+	ALIAS ckl-tests::rc
+	NAMESPACE kernels
+    WHENCE kernels
+
+	kernels/axpy.cuh
+	)
+target_link_libraries(ckl-tests PRIVATE ckl-tests::rc)

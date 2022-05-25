@@ -4,6 +4,10 @@
 #include <ckl/errors.h>
 #include <cuda_runtime.h>
 
+#include <cmrc/cmrc.hpp>
+CMRC_DECLARE(kernels);
+#include <ckl/cmrc_loader.h>
+
 static void testAXPY(ckl::KernelLoader_ptr kl)
 {
     const int N = 2048;
@@ -69,3 +73,15 @@ TEST_CASE("filesystem_loader", "[ckl]")
 
     testAXPY(kl);
 }
+
+TEST_CASE("embedded_loader", "[ckl]")
+{
+    cmrc::embedded_filesystem fs = cmrc::kernels::get_filesystem();
+
+    auto kl = std::make_shared<ckl::KernelLoader>();
+    kl->disableCudaCache();
+    kl->setFileLoader(std::make_shared<ckl::CMRCLoader>(fs));
+
+    testAXPY(kl);
+}
+

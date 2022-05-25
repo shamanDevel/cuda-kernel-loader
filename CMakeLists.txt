@@ -119,7 +119,8 @@ configure_file(src/ckl_nvcc_args.inl.in ckl_nvcc_args.inl)
 set(CKL_HEADERS
     include/ckl/common.h
     include/ckl/kernel_loader.h
-    include/ckl/errors.h)
+    include/ckl/errors.h
+    include/ckl/cmrc_loader.h)
     
 set(CKL_SOURCES
     src/kernel_loader.cpp
@@ -202,8 +203,6 @@ if(NOT TARGET ckl)
     CUDA::cudart CUDA::cuda_driver CUDA::nvrtc)
   target_compile_definitions(ckl PRIVATE 
     CKL_NVCC_INCLUDE_DIR=${CUDA_INCLUDE_DIRS})
-  target_include_directories(ckl PRIVATE 
-    CUDAToolkit_INCLUDE_DIRS)
   
 else()
   # It is invalid to install a target twice, too.
