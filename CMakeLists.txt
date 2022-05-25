@@ -105,7 +105,7 @@ else()
     set(ckl_requires_arch_flags ON)
 endif()
 
-cmake_dependent_option(CKL_ARCH_FLAGS "CUDA Architecture specification" "--gpu-architecture=compute_75" "ckl_requires_arch_flags" ${ckl_ARCH_FLAGS3})
+cmake_dependent_option(CKL_ARCH_FLAGS "CUDA Architecture specification" "75" "ckl_requires_arch_flags" ${ckl_ARCH_FLAGS3})
 
 list(APPEND ckl_CUDA_NVCC_FLAGS ${CKL_ARCH_FLAGS} "-std=c++17" "--use_fast_math" "--generate-line-info" "-Xptxas" "-v")
 message(STATUS "ckl compilation flags: ${ckl_CUDA_NVCC_FLAGS}")
