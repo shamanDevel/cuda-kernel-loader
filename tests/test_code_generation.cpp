@@ -41,7 +41,7 @@ struct Functor {
 
     //compute - GPU
     auto fun = kl->getKernel(
-        "unary<float, Functor>",
+        "UnaryKernel<float, Functor>",
         fDevice
     );
     unsigned blockDim = fun->bestBlockSize();

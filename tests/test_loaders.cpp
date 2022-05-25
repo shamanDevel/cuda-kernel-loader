@@ -38,7 +38,7 @@ static void testAXPY(ckl::KernelLoader_ptr kl)
 
     //compute - GPU
     auto fun = kl->getKernel(
-        "axpy<int>",
+        "AxpyKernel<int>",
         ckl::KernelLoader::MainFile("axpy.cuh")
     );
     unsigned blockDim = fun->bestBlockSize();

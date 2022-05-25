@@ -18,17 +18,21 @@ endif()
 
 
 # Full set of test files
+set(CKL_KERNEL_FILES
+    kernels/axpy.cuh
+    kernels/unary.cuh
+    kernels/constants.cuh
+    )
 set(CKL_TEST_FILES
     main.cpp
     catch.hpp
     test_code_generation.cpp
     test_loaders.cpp
-    kernels/axpy.cuh
-    kernels/unary.cuh
+    test_constants.cpp
     )
 
 add_executable(ckl-tests
-    ${CKL_TEST_FILES})
+    ${CKL_TEST_FILES} ${CKL_KERNEL_FILES})
     
 set_target_properties(ckl-tests PROPERTIES
     CXX_STANDARD 17
@@ -65,7 +69,6 @@ cmrc_add_resource_library(
 	NAMESPACE kernels
     WHENCE kernels
 
-	kernels/axpy.cuh
-    kernels/unary.cuh
+	${CKL_KERNEL_FILES}
 	)
 target_link_libraries(ckl-tests PRIVATE ckl-tests::rc)
