@@ -126,9 +126,6 @@ set(CKL_SOURCES
     src/kernel_loader.cpp
     src/sha1.h
     src/sha1.cpp)
-    
-set(CKL_TESTS
-    tests/test1.cpp)
 
 # Compare with grep and warn if mismatched
 if(CKL_MASTER_PROJECT AND NOT CMAKE_VERSION VERSION_LESS 3.12)
