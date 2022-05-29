@@ -385,6 +385,18 @@ void KernelLoader::setFileLoader(const std::shared_ptr<IFileLoader>& loader)
     reloadCudaKernels();
 }
 
+std::optional<std::string> KernelLoader::findFile(const std::string& filename)
+{
+    for (const auto& nc : includeFiles_)
+    {
+        if (nc.filename == filename)
+        {
+            return nc.content;
+        }
+    }
+    return {};
+}
+
 void KernelLoader::setCacheDir(const std::filesystem::path& path)
 {
     cacheDirectory_ = path;

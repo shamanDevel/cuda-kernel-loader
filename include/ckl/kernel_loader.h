@@ -321,6 +321,12 @@ public:
     void setFileLoader(const std::shared_ptr<IFileLoader>& loader);
 
     /**
+     * Returns the content of the given file from the registered file loader,
+     * if found.
+     */
+    std::optional<std::string> findFile(const std::string& filename);
+
+    /**
      * Sets the cache directory and enables caching.
      * Kernels are stored persistently there to reduce the re-compilation
      * times between program runs.
