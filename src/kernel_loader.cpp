@@ -47,7 +47,7 @@ static bool printError(CUresult result, const std::string& kernelName)
 
 void FilesystemLoader::populate(std::vector<NameAndContent>& files)
 {
-    for (const auto& p : fs::directory_iterator(root_))
+    for (const auto& p : fs::recursive_directory_iterator(root_))
     {
         if (!p.is_regular_file()) continue;
         if (!hasRegex_ || std::regex_match(p.path().string(), regex_))
@@ -58,8 +58,9 @@ void FilesystemLoader::populate(std::vector<NameAndContent>& files)
                 std::ostringstream ss;
                 ss << t.rdbuf();
                 std::string buffer = ss.str();
-                auto relPath = p.path().lexically_relative(root_);
-                files.push_back(NameAndContent{ relPath.string(), buffer });
+                auto relPath = p.path().lexically_relative(root_).string();
+                std::replace(relPath.begin(), relPath.end(), '\\', '/');
+                files.push_back(NameAndContent{ relPath, buffer });
             }
             catch (const std::exception& ex)
             {
