@@ -135,6 +135,11 @@ class KernelFunction
 public:
     KernelFunction() = default;
     /**
+     * \brief Returns true iff the kernel function is defined (compiled and loaded).
+     * False in the case of created by the default constructor.
+     */
+    [[nodiscard]] bool defined() const { return storage_ != nullptr; }
+    /**
      * \brief Returns the native CUDA function handle
      */
     [[nodiscard]] CUfunction fun() const;
