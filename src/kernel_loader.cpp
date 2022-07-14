@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <mutex>
+#include <thread>
 
 #include "sha1.h"
 #include <ckl/errors.h>
@@ -43,6 +44,29 @@ static bool printError(CUresult result, const std::string& kernelName)
     cuGetErrorString(result, &pStr);
     std::cerr << "Unable to launch kernel " << kernelName << ":\n " << pStr << std::endl;
     return false;
+}
+
+namespace
+{
+    struct ContextRAIID
+    {
+        bool pushed_;
+        ContextRAIID(CUcontext ctx)
+            : pushed_(false)
+        {
+            if (ctx != 0) {
+                CU_SAFE_CALL(cuCtxPushCurrent(ctx));
+                pushed_ = true;
+            }
+        }
+        ~ContextRAIID()
+        {
+            if (pushed_) {
+                CUcontext dummy;
+                CU_SAFE_CALL(cuCtxPopCurrent(&dummy));
+            }
+        }
+    };
 }
 
 void FilesystemLoader::populate(std::vector<NameAndContent>& files)
@@ -221,6 +245,13 @@ void detail::KernelStorage::loadPTX(bool verbose)
     if (verbose) {
         std::cout << "Load module \"" << this->machineName << "\"" << std::endl;
     }
+
+    //TEST:
+    CUcontext ctx;
+    CU_SAFE_CALL(cuCtxGetCurrent(&ctx));
+    std::cout << "Current context: " << ctx << std::endl;
+    std::cout << "Current thread: " << std::this_thread::get_id() << std::endl;
+
     //load PTX
     unsigned int infoBufferSize = 1024;
     unsigned int errorBufferSize = 1024;
@@ -360,6 +391,10 @@ void KernelFunction::fillConstantMemory(const std::string& name, const void* dat
 void KernelFunction::call(unsigned gridDimX, unsigned gridDimY, unsigned gridDimZ, unsigned blockDimX,
     unsigned blockDimY, unsigned blockDimZ, unsigned sharedMemBytes, CUstream hStream, void** kernelParams)
 {
+    CUcontext ctx;
+    CU_SAFE_CALL(cuCtxGetCurrent(&ctx));
+    ContextRAIID contextRaiid(ctx != ctx_ ? ctx_ : nullptr);
+
     CU_SAFE_CALL(cuLaunchKernel(fun(), gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, nullptr));
 }
 
@@ -394,6 +429,10 @@ KernelLoader::KernelLoader()
         "-D__NVCC__=1",
         "-DCUDA_NO_HOST=1",
     };
+
+    //query context
+    CU_SAFE_CALL(cuCtxGetCurrent(&ctx_));
+    std::cout << "Current CUDA Driver context: " << ctx_ << std::endl;
 }
 
 KernelLoader::~KernelLoader()
@@ -481,6 +520,23 @@ std::optional<KernelFunction> KernelLoader::getKernel(
     const std::vector<std::string>& constantNames, int flags)
 {
     bool verbose = flags & CompileVerboseLogging;
+
+    //check if we are in a multi-threaded environment
+    CUcontext ctx;
+    CU_SAFE_CALL(cuCtxGetCurrent(&ctx));
+    if (ctx_ == nullptr)
+    {
+        //no context found during initialization, set this one as the default one
+        ctx_ = ctx;
+    }
+    if (ctx != ctx_ && verbose)
+    {
+        std::cout << "Attempt to call getKernel() from a different thread or different context than where the KernelLoader was created from. " <<
+            "Expected context: " << ctx_ << ", current context: " << ctx << ". " <<
+            "Restore the old context now." << std::endl;
+    }
+    ContextRAIID contextRaiid(ctx != ctx_ ? ctx_ : nullptr);
+
     loadKernelCache(verbose);
 
     SHA1 sha;
@@ -509,7 +565,7 @@ std::optional<KernelFunction> KernelLoader::getKernel(
 
             kernelStorage_.emplace(kernelKey, storage);
             saveKernelCache();
-            return KernelFunction(storage);
+            return KernelFunction(storage, ctx_);
         }
         catch (std::exception& ex)
         {
@@ -526,7 +582,7 @@ std::optional<KernelFunction> KernelLoader::getKernel(
     else
     {
         //kernel found, return immediately
-        return KernelFunction(it->second);
+        return KernelFunction(it->second, ctx_);
     }
 }
 

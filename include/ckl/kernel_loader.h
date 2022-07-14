@@ -129,9 +129,10 @@ class KernelLoader;
 class KernelFunction
 {
     std::shared_ptr<detail::KernelStorage> storage_;
+    CUcontext ctx_ = nullptr;
     friend class KernelLoader;
-    explicit KernelFunction(const std::shared_ptr<detail::KernelStorage>& storage)
-        : storage_(storage) {}
+    KernelFunction(const std::shared_ptr<detail::KernelStorage>& storage, CUcontext ctx)
+        : storage_(storage), ctx_(ctx) {}
 public:
     KernelFunction() = default;
     /**
@@ -453,6 +454,7 @@ private:
     void loadKernelCache(bool verbose);
     static constexpr unsigned int KERNEL_CACHE_MAGIC = 0x61437543u; //CuCa
 
+    CUcontext ctx_;
     int computeMajor_;
     int computeMinor_;
     std::string computeArchitecture_;
