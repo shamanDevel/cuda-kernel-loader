@@ -375,6 +375,12 @@ KernelLoader::KernelLoader()
         props.major << "." << props.minor << std::endl;
     computeArchitecture_ = internal::Format::format("--gpu-architecture=compute_%d%d", computeMajor_, computeMinor_);
 
+#ifdef CKL_NVCC_INCLUDE_DIR
+    std::cout << "NVCC include directory: " << CKL_STR(CKL_NVCC_INCLUDE_DIR) << std::endl;
+#else
+    std::cout << "Warning: no NVCC include directory specified. Compiling kernels will likely fail" << std::endl;
+#endif
+
     compileOptions_ = {
         computeArchitecture_.c_str(),
         "-std=c++17",
