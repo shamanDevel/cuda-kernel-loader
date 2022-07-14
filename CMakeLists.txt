@@ -94,27 +94,6 @@ option(CKL_SHARED "Build ckl as a shared library?" OFF)
 find_package(CUDA REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
-if(COMMAND CUDA_SELECT_NVCC_ARCH_FLAGS)
-    CUDA_SELECT_NVCC_ARCH_FLAGS(ARCH_FLAGS Auto)
-    STRING(LENGTH "${ARCH_FLAGS}" ckl_ARCH_FLAGS_LENGTH)
-    MATH(EXPR ckl_ARCH_FLAGS_LENGTH2 "${ckl_ARCH_FLAGS_LENGTH} - 2")
-    STRING(SUBSTRING "${ARCH_FLAGS}" ${ckl_ARCH_FLAGS_LENGTH2} -1 ckl_ARCH_FLAGS2)
-    set(ckl_ARCH_FLAGS3 "--gpu-architecture=compute_${ckl_ARCH_FLAGS2}")
-    set(ckl_requires_arch_flags OFF)
-else()
-    set(ckl_requires_arch_flags ON)
-endif()
-
-cmake_dependent_option(CKL_ARCH_FLAGS "CUDA Architecture specification" "75" "ckl_requires_arch_flags" ${ckl_ARCH_FLAGS3})
-
-list(APPEND ckl_CUDA_NVCC_FLAGS ${CKL_ARCH_FLAGS} "-std=c++17" "--use_fast_math" "--generate-line-info" "-Xptxas" "-v")
-message(STATUS "ckl compilation flags: ${ckl_CUDA_NVCC_FLAGS}")
-
-foreach(t ${ckl_CUDA_NVCC_FLAGS})
-    set(CKL_NVCC_ARGS_C "${CKL_NVCC_ARGS_C}   \"${t}\",\n")
-endforeach()
-configure_file(src/ckl_nvcc_args.inl.in ckl_nvcc_args.inl)
-
 # Files
 set(CKL_HEADERS
     include/ckl/common.h

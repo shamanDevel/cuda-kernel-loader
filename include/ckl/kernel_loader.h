@@ -424,6 +424,25 @@ public:
      */
     static std::string MainFile(const std::string& filename);
 
+    /**
+     * Returns the major revision number defining the device's compute capability
+     */
+    [[nodiscard]] int computeMajor() const { return computeMajor_; }
+
+    /**
+     * Returns the major revision number defining the device's compute capability
+     */
+    [[nodiscard]] int computeMinor() const { return computeMinor_; }
+
+    /**
+     * Returns the compute capability of the current device.
+     * Computed as 10*major+minor. Examples:
+     *  - 61 for Pascal architecture
+     *  - 75 for the Turing architecture
+     *  - 86 for Ampere
+     */
+    [[nodiscard]] int computeCapability() const { return computeMajor_; }
+
 private:
 
     //Loads the CUDA source file
@@ -433,6 +452,11 @@ private:
     void saveKernelCache();
     void loadKernelCache(bool verbose);
     static constexpr unsigned int KERNEL_CACHE_MAGIC = 0x61437543u; //CuCa
+
+    int computeMajor_;
+    int computeMinor_;
+    std::string computeArchitecture_;
+    std::vector<const char*> compileOptions_;
 
     std::filesystem::path cacheDirectory_;
 

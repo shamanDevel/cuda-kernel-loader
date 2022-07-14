@@ -366,7 +366,28 @@ void KernelFunction::call(unsigned gridDimX, unsigned gridDimY, unsigned gridDim
 
 KernelLoader::KernelLoader()
 {
-    //nothing to do
+    //query compute capability
+    cudaDeviceProp props {0};
+    CKL_SAFE_CALL(cudaGetDeviceProperties(&props, 0));
+    computeMajor_ = props.major;
+    computeMinor_ = props.minor;
+    std::cout << "Compiling kernels for device '" << props.name << "' with compute capability " <<
+        props.major << "." << props.minor << std::endl;
+    computeArchitecture_ = internal::Format::format("--gpu-architecture=compute_%d%d", computeMajor_, computeMinor_);
+
+    compileOptions_ = {
+        computeArchitecture_.c_str(),
+        "-std=c++17",
+        "--use_fast_math",
+        "--generate-line-info",
+        "-Xptxas",
+        "-v",
+#ifdef CKL_NVCC_INCLUDE_DIR
+        "-I", CKL_STR(CKL_NVCC_INCLUDE_DIR),
+#endif
+        "-D__NVCC__=1",
+        "-DCUDA_NO_HOST=1",
+    };
 }
 
 KernelLoader::~KernelLoader()
@@ -468,14 +489,7 @@ std::optional<KernelFunction> KernelLoader::getKernel(
         //kernel not found in the cache, recompile it
 
         //assemble compile options
-        std::vector<const char*> opts{
-#include <ckl_nvcc_args.inl>
-#ifdef CKL_NVCC_INCLUDE_DIR
-            "-I", CKL_STR(CKL_NVCC_INCLUDE_DIR),
-#endif
-            "-D__NVCC__=1",
-            "-DCUDA_NO_HOST=1",
-        };
+        std::vector<const char*> opts = compileOptions_;
         if (flags & CompileDebugMode)
         {
             opts.push_back("-G");
