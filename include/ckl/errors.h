@@ -8,6 +8,7 @@
  */
 
 #include <cuda_runtime.h>
+#include <cuda.h>
 #include <exception>
 #include <string>
 #include <cstdarg>
@@ -127,6 +128,34 @@ namespace internal
 			}
 			return true;
 		}
+
+		static bool evalError(CUresult err, const char* file, const int line)
+		{
+			if (CUDA_SUCCESS != err) {
+				const char* pStr;
+				cuGetErrorString(err, &pStr);
+				const char* pName;
+				cuGetErrorName(err, &pName);
+				std::string msg = internal::Format::format("cudaSafeCall() failed at %s:%i : Error code %s, description: %s\n",
+					file, line, pName, pStr);
+				throw cuda_error(msg);
+			}
+			return true;
+		}
+		static bool evalErrorNoThrow(CUresult err, const char* file, const int line)
+		{
+			if (cudaSuccess != err) {
+				const char* pStr;
+				cuGetErrorString(err, &pStr);
+				const char* pName;
+				cuGetErrorName(err, &pName);
+				std::string msg = internal::Format::format("cudaSafeCall() failed at %s:%i : Error code %s, description: %s\n",
+					file, line, pName, pStr);
+				//TODO: logging?
+				return false;
+			}
+			return true;
+		}
 	public:
 		static void cudaSafeCall(cudaError err, const char* file, const int line)
 		{
@@ -144,7 +173,28 @@ namespace internal
 #if CKL_ALWAYS_SYNC==1
 			//insert a device-sync
 			err = cudaDeviceSynchronize();
-			if (!evalError(err, file, line)) return false;
+			if (!evalErrorNoThrow(err, file, line)) return false;
+#endif
+			return true;
+		}
+
+		static void cudaSafeCall(CUresult err, const char* file, const int line)
+		{
+			if (!evalError(err, file, line)) return;
+#if CKL_ALWAYS_SYNC==1
+			//insert a device-sync
+			err = cudaDeviceSynchronize();
+			evalError(err, file, line);
+#endif
+		}
+
+		static bool cudaSafeCallNoThrow(CUresult err, const char* file, const int line)
+		{
+			if (!evalErrorNoThrow(err, file, line)) return false;
+#if CKL_ALWAYS_SYNC==1
+			//insert a device-sync
+			err = cudaDeviceSynchronize();
+			if (!evalErrorNoThrow(err, file, line)) return false;
 #endif
 			return true;
 		}

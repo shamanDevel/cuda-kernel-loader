@@ -15,20 +15,6 @@ CKL_NAMESPACE_BEGIN
 
 namespace fs = std::filesystem;
 
-static void throwOnError(CUresult err, const char* file, int line)
-{
-    if (err != CUDA_SUCCESS)
-    {
-        const char* pStr;
-        cuGetErrorString(err, &pStr);
-        const char* pName;
-        cuGetErrorName(err, &pName);
-        throw ckl::cuda_error("CUDA error %s at %s:%d : %s",
-            pName, file, line, pStr);
-    }
-}
-#define CU_SAFE_CALL( err ) throwOnError( err, __FILE__, __LINE__ )
-
 static void throwOnNvrtcError(nvrtcResult result, const char* file, const int line)
 {
     if (result != NVRTC_SUCCESS) {
@@ -55,7 +41,7 @@ namespace
             : pushed_(false)
         {
             if (ctx != 0) {
-                CU_SAFE_CALL(cuCtxPushCurrent(ctx));
+                CKL_SAFE_CALL(cuCtxPushCurrent(ctx));
                 pushed_ = true;
             }
         }
@@ -63,7 +49,7 @@ namespace
         {
             if (pushed_) {
                 CUcontext dummy;
-                CU_SAFE_CALL(cuCtxPopCurrent(&dummy));
+                CKL_SAFE_CALL(cuCtxPopCurrent(&dummy));
             }
         }
     };
@@ -248,7 +234,7 @@ void detail::KernelStorage::loadPTX(bool verbose)
 
     //TEST:
     CUcontext ctx;
-    CU_SAFE_CALL(cuCtxGetCurrent(&ctx));
+    CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
     std::cout << "Current context: " << ctx << std::endl;
     std::cout << "Current thread: " << std::this_thread::get_id() << std::endl;
 
@@ -282,10 +268,10 @@ void detail::KernelStorage::loadPTX(bool verbose)
     if (errorLog[0]) {
         std::cerr << "Compiler error: " << errorLog.get() << std::endl;
     }
-    CU_SAFE_CALL(err);
+    CKL_SAFE_CALL(err);
 
     //get cuda function and constants
-    CU_SAFE_CALL(cuModuleGetFunction(&this->function, this->module, this->machineName.data()));
+    CKL_SAFE_CALL(cuModuleGetFunction(&this->function, this->module, this->machineName.data()));
     for (const auto& e : human2machine)
     {
         if (verbose) {
@@ -293,14 +279,14 @@ void detail::KernelStorage::loadPTX(bool verbose)
                 << "\", machine name \"" << e.second << "\"" << std::endl;
         }
         CUdeviceptr addr;
-        CU_SAFE_CALL(cuModuleGetGlobal(&addr, nullptr, module, e.second.data()));
+        CKL_SAFE_CALL(cuModuleGetGlobal(&addr, nullptr, module, e.second.data()));
         constants[e.first] = addr;
         if (verbose)
             std::cout << "constant variable " << e.first << " has device pointer 0x"
             << std::hex << addr << std::dec << std::endl;
     }
 
-    CU_SAFE_CALL(cuOccupancyMaxPotentialBlockSize(
+    CKL_SAFE_CALL(cuOccupancyMaxPotentialBlockSize(
         &minGridSize, &bestBlockSize, function, NULL, 0, 0));
 
     if (verbose) {
@@ -380,11 +366,11 @@ void KernelFunction::fillConstantMemory(const std::string& name, const void* dat
 
     if (async) 
     {
-        CU_SAFE_CALL(cuMemcpyHtoDAsync(ptr, dataHost, size, stream));
+        CKL_SAFE_CALL(cuMemcpyHtoDAsync(ptr, dataHost, size, stream));
     }
     else
     {
-        CU_SAFE_CALL(cuMemcpyHtoD(ptr, dataHost, size));
+        CKL_SAFE_CALL(cuMemcpyHtoD(ptr, dataHost, size));
     }
 }
 
@@ -392,10 +378,10 @@ void KernelFunction::call(unsigned gridDimX, unsigned gridDimY, unsigned gridDim
     unsigned blockDimY, unsigned blockDimZ, unsigned sharedMemBytes, CUstream hStream, void** kernelParams)
 {
     CUcontext ctx;
-    CU_SAFE_CALL(cuCtxGetCurrent(&ctx));
+    CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
     ContextRAIID contextRaiid(ctx != ctx_ ? ctx_ : nullptr);
 
-    CU_SAFE_CALL(cuLaunchKernel(fun(), gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, nullptr));
+    CKL_SAFE_CALL(cuLaunchKernel(fun(), gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, nullptr));
 }
 
 
@@ -431,7 +417,7 @@ KernelLoader::KernelLoader()
     };
 
     //query context
-    CU_SAFE_CALL(cuCtxGetCurrent(&ctx_));
+    CKL_SAFE_CALL(cuCtxGetCurrent(&ctx_));
     std::cout << "Current CUDA Driver context: " << ctx_ << std::endl;
 }
 
@@ -523,7 +509,7 @@ std::optional<KernelFunction> KernelLoader::getKernel(
 
     //check if we are in a multi-threaded environment
     CUcontext ctx;
-    CU_SAFE_CALL(cuCtxGetCurrent(&ctx));
+    CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
     if (ctx_ == nullptr)
     {
         //no context found during initialization, set this one as the default one
