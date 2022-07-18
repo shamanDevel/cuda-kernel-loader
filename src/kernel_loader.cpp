@@ -24,14 +24,6 @@ static void throwOnNvrtcError(nvrtcResult result, const char* file, const int li
 }
 #define NVRTC_SAFE_CALL( err ) throwOnNvrtcError( err, __FILE__, __LINE__ )
 
-static bool printError(CUresult result, const std::string& kernelName)
-{
-    const char* pStr;
-    cuGetErrorString(result, &pStr);
-    std::cerr << "Unable to launch kernel " << kernelName << ":\n " << pStr << std::endl;
-    return false;
-}
-
 namespace
 {
     struct ContextRAIID

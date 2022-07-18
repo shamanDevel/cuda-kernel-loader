@@ -144,7 +144,7 @@ namespace internal
 		}
 		static bool evalErrorNoThrow(CUresult err, const char* file, const int line)
 		{
-			if (cudaSuccess != err) {
+			if (CUDA_SUCCESS != err) {
 				const char* pStr;
 				cuGetErrorString(err, &pStr);
 				const char* pName;
