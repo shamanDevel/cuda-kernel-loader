@@ -34,7 +34,7 @@ string(REGEX MATCH "^[0-9]+" CKL_VERSION_PATCH "${CKL_VERSION_PATCH}")
 
 project(
   ckl
-  LANGUAGES CXX
+  LANGUAGES CXX CUDA
   VERSION "${CKL_VERSION_MAJOR}.${CKL_VERSION_MINOR}.${CKL_VERSION_PATCH}")
 
 # Standard includes
@@ -90,9 +90,11 @@ endif()
 option(CKL_TEST "Build ckl test suite?" ${CKL_MASTER_PROJECT})
 option(CKL_SHARED "Build ckl as a shared library?" OFF)
 
-# CUDA
-find_package(CUDA REQUIRED)
+# CUDA Toolkit
 find_package(CUDAToolkit REQUIRED)
+if(NOT ckl_FIND_QUIETLY)
+  message(STATUS "ckl CUDA include directories: '${CUDAToolkit_INCLUDE_DIRS}'")
+endif()
 
 # Files
 set(CKL_HEADERS
@@ -178,7 +180,7 @@ if(NOT TARGET ckl)
   target_link_libraries(ckl PRIVATE
     CUDA::cudart CUDA::cuda_driver CUDA::nvrtc)
   target_compile_definitions(ckl PRIVATE 
-    CKL_NVCC_INCLUDE_DIR=${CUDA_INCLUDE_DIRS})
+    CKL_NVCC_INCLUDE_DIR=${CUDAToolkit_INCLUDE_DIRS})
   
 else()
   # It is invalid to install a target twice, too.
