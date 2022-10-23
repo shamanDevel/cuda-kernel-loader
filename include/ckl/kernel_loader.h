@@ -89,6 +89,7 @@ namespace detail
 
         CUmodule module;
         std::vector<char> ptxData;
+        std::string humanName;
         std::string machineName;
         CUfunction function;
         int minGridSize;
@@ -158,6 +159,10 @@ public:
      * or '0' if not found.
      */
     [[nodiscard]] CUdeviceptr constant(const std::string& name) const;
+    /**
+     * \brief Returns the human name of this kernel
+     */
+    [[nodiscard]] std::string name() const;
 
 private:
     void fillConstantMemory(const std::string& name, const void* dataHost, size_t size, bool async, CUstream stream);

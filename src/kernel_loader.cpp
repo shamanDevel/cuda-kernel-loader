@@ -86,6 +86,7 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
                                      const std::vector<const char*>& compileArgs,
                                      bool verbose)
         : module(nullptr)
+        , humanName(kernelName)
         , function(nullptr)
         , minGridSize(0)
         , bestBlockSize(0)
@@ -189,7 +190,11 @@ detail::KernelStorage::KernelStorage(std::ifstream& i, bool verbose)
     , minGridSize(0)
     , bestBlockSize(0)
 {
-    size_t machineNameSize, ptxSize;
+    size_t humanNameSize, machineNameSize, ptxSize;
+    i.read(reinterpret_cast<char*>(&humanNameSize), sizeof(size_t));
+    humanName.resize(humanNameSize);
+    i.read(humanName.data(), humanNameSize);
+
     i.read(reinterpret_cast<char*>(&machineNameSize), sizeof(size_t));
     machineName.resize(machineNameSize);
     i.read(machineName.data(), machineNameSize);
@@ -302,6 +307,10 @@ detail::KernelStorage::~KernelStorage()
 
 void detail::KernelStorage::save(std::ofstream& o) const
 {
+    size_t humanNameSize = humanName.size();
+    o.write(reinterpret_cast<const char*>(&humanNameSize), sizeof(size_t));
+    o.write(humanName.c_str(), humanNameSize);
+
     size_t machineNameSize = machineName.size();
     o.write(reinterpret_cast<const char*>(&machineNameSize), sizeof(size_t));
     o.write(machineName.c_str(), machineNameSize);
@@ -349,8 +358,13 @@ CUdeviceptr KernelFunction::constant(const std::string& name) const
         return it->second;
 }
 
+std::string KernelFunction::name() const
+{
+    return storage_->humanName;
+}
+
 void KernelFunction::fillConstantMemory(const std::string& name, const void* dataHost, size_t size, bool async,
-    CUstream stream)
+                                        CUstream stream)
 {
     CUdeviceptr ptr = constant(name);
     if (ptr == 0)
