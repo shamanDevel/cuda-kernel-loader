@@ -232,8 +232,10 @@ void detail::KernelStorage::loadPTX(bool verbose)
     //TEST:
     CUcontext ctx;
     CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
-    std::cout << "Current context: " << ctx << std::endl;
-    std::cout << "Current thread: " << std::this_thread::get_id() << std::endl;
+    if (verbose) {
+        std::cout << "Current context: " << ctx << std::endl;
+        std::cout << "Current thread: " << std::this_thread::get_id() << std::endl;
+    }
 
     //load PTX
     unsigned int infoBufferSize = 1024;
