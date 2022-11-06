@@ -297,7 +297,11 @@ void detail::KernelStorage::loadPTX(bool verbose)
 detail::KernelStorage::~KernelStorage()
 {
     CUresult err = cuModuleUnload(this->module);
-    if (err != CUDA_SUCCESS) {
+    if (err == CUDA_ERROR_DEINITIALIZED)
+    {
+        //ignore silently, we are terminating the program
+    }
+    else if (err != CUDA_SUCCESS) {
         const char* pStr;
         cuGetErrorString(err, &pStr);
         const char* pName;
