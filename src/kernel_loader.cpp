@@ -386,7 +386,7 @@ void KernelFunction::fillConstantMemory(const std::string& name, const void* dat
     }
 }
 
-void KernelFunction::call(unsigned gridDimX, unsigned gridDimY, unsigned gridDimZ, unsigned blockDimX,
+void KernelFunction::callRaw(unsigned gridDimX, unsigned gridDimY, unsigned gridDimZ, unsigned blockDimX,
     unsigned blockDimY, unsigned blockDimZ, unsigned sharedMemBytes, CUstream hStream, void** kernelParams)
 {
     CUcontext ctx;

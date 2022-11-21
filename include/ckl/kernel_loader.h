@@ -250,8 +250,7 @@ public:
         fillConstantMemory(name, dataArray, sizeof(T) * size, true, stream);
     }
 
-private:
-    void call(unsigned int gridDimX,
+    void callRaw(unsigned int gridDimX,
         unsigned int gridDimY,
         unsigned int gridDimZ,
         unsigned int blockDimX,
@@ -261,7 +260,6 @@ private:
         CUstream hStream,
         void** kernelParams);
 
-public:
     /**
      * Launches the kernel with a 1D grid
      * of 'gridDim' blocks with 'blockDim' threads per block.
