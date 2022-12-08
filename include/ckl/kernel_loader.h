@@ -283,8 +283,8 @@ public:
         //fetch addresses of the arguments
         void* argv[] = { std::addressof(args)... };
 
-        //launch
-        call(gridDim, 1, 1, blockDim, 1, 1, sharedMemBytes, hStream, argv);
+        // launch
+        callRaw(gridDim, 1, 1, blockDim, 1, 1, sharedMemBytes, hStream, argv);
     }
 };
 
@@ -455,7 +455,7 @@ private:
 
     void saveKernelCache();
     void loadKernelCache(bool verbose);
-    static constexpr unsigned int KERNEL_CACHE_MAGIC = 0x61437543u; //CuCa
+    static constexpr unsigned int KERNEL_CACHE_MAGIC = 0x61437543u; // CuCa
 
     CUcontext ctx_;
     int computeMajor_;
