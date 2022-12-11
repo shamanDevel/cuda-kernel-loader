@@ -7,10 +7,13 @@
 #include <vector>
 #include <regex>
 #include <memory>
+#include <spdlog/spdlog.h>
 
 #include "common.h"
 
 CKL_NAMESPACE_BEGIN
+
+typedef std::shared_ptr<spdlog::logger> logger_t;
 
 /**
  * Holder for the filename, path separation via '/',
@@ -87,6 +90,7 @@ namespace detail
     {
         typedef std::map<std::string, CUdeviceptr> constants_t;
 
+        const logger_t logger;
         CUmodule module;
         std::vector<char> ptxData;
         std::string humanName;
@@ -104,12 +108,12 @@ namespace detail
             const std::string& source,
             const std::vector<std::string>& constantNames,
             const std::vector<const char*>& compileArgs,
-            bool verbose);
+            logger_t logger);
 
         //loads the pre-compiled kernel from the cache file
-        KernelStorage(std::ifstream& i, bool verbose);
+        KernelStorage(std::ifstream& i, logger_t logger);
 
-        void loadPTX(bool verbose);
+        void loadPTX();
 
         //unloads the kernel
         ~KernelStorage();
@@ -313,8 +317,9 @@ public:
      * is probably the better choice to have a unified caching and file loading system.
      *
      * \see KernelLoader::Instance()
+     * \param logger the logger to use. If NULL, a console logger is used
      */
-    KernelLoader();
+    explicit KernelLoader(logger_t logger = nullptr);
 
     ~KernelLoader();
 
@@ -322,6 +327,20 @@ public:
      * The global singleton instance
      */
     static KernelLoader& Instance();
+
+    /**
+     * Returns the logger instance used to report compile logs (debug) or errors
+     */
+    [[nodiscard]] logger_t getLogger() const;
+
+    /**
+     * Sets the log level.
+     * The kernel loader uses the following levels:
+     *  - debug: verbose info on the kernel names and source code
+     *  - info: a new kernel is compiled
+     *  - error: compilation errors
+     */
+    void setLogLevel(spdlog::level::level_enum level);
 
     /**
      * Sets the file loader used to load the available include files.
@@ -384,10 +403,6 @@ public:
          * throw an std::runtime_error instead.
          */
         CompileThrowOnError = 2,
-        /**
-         * Activates verbose logging.
-         */
-        CompileVerboseLogging = 4
     };
 
     /**
@@ -454,7 +469,7 @@ private:
     bool loadCUDASources();
 
     void saveKernelCache();
-    void loadKernelCache(bool verbose);
+    void loadKernelCache();
     static constexpr unsigned int KERNEL_CACHE_MAGIC = 0x61437543u; // CuCa
 
     CUcontext ctx_;
@@ -462,6 +477,7 @@ private:
     int computeMinor_;
     std::string computeArchitecture_;
     std::vector<const char*> compileOptions_;
+    logger_t logger_;
 
     std::filesystem::path cacheDirectory_;
 

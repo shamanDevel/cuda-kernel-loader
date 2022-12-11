@@ -96,6 +96,11 @@ if(NOT ckl_FIND_QUIETLY)
   message(STATUS "ckl CUDA include directories: '${CUDAToolkit_INCLUDE_DIRS}'")
 endif()
 
+# Logger
+if(NOT TARGET spdlog::spdlog)
+    add_subdirectory(third-party/spdlog)
+endif()
+
 # Files
 set(CKL_HEADERS
     include/ckl/common.h
@@ -177,8 +182,12 @@ if(NOT TARGET ckl)
   target_include_directories(ckl PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
   # CUDA Stuff
-  target_link_libraries(ckl PRIVATE
-    CUDA::cudart CUDA::cuda_driver CUDA::nvrtc)
+  target_link_libraries(ckl 
+    PUBLIC
+    CUDA::cudart 
+    CUDA::cuda_driver 
+    CUDA::nvrtc
+    spdlog::spdlog)
   target_compile_definitions(ckl PRIVATE 
     CKL_NVCC_INCLUDE_DIR=${CUDAToolkit_INCLUDE_DIRS})
   

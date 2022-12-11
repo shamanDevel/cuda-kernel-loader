@@ -1,12 +1,12 @@
 #include <ckl/kernel_loader.h>
 
-#include <iostream>
 #include <filesystem>
 #include <nvrtc.h>
 #include <sstream>
 #include <fstream>
 #include <mutex>
 #include <thread>
+#include "spdlog/sinks/stdout_color_sinks.h"
 
 #include "sha1.h"
 #include <ckl/errors.h>
@@ -84,32 +84,33 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
                                      const std::string& source,
                                      const std::vector<std::string>& constantNames,
                                      const std::vector<const char*>& compileArgs,
-                                     bool verbose)
-        : module(nullptr)
+                                     logger_t logger)
+        : logger(logger)
+        , module(nullptr)
         , humanName(kernelName)
         , function(nullptr)
         , minGridSize(0)
         , bestBlockSize(0)
 {
-    if (verbose) std::cout << "Compile kernel \"" << kernelName << "\"" << std::endl;
+    logger->info("Compile kernel {}", kernelName);
 
     //create program
     nvrtcProgram prog;
 
     const auto printSourceCode = [](const std::string& s)
     {
+        std::stringstream ss;
         std::istringstream iss(s);
         int lineIndex = 1;
         for (std::string line; std::getline(iss, line); lineIndex++)
         {
-            std::cout << "[" << std::setfill('0') << std::setw(5) << lineIndex <<
+            ss << "[" << std::setfill('0') << std::setw(5) << lineIndex <<
                 "] " << line << "\n";
         }
-        std::cout << std::flush;
+        return ss.str();
     };
-    if (verbose)
-    {
-        printSourceCode(source);
+    if (logger->should_log(spdlog::level::debug)) {
+        logger->debug("Source code: {}", printSourceCode(source));
     }
 
     std::vector<const char*> headerContents(includeFiles.size());
@@ -144,12 +145,15 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
     NVRTC_SAFE_CALL(nvrtcGetProgramLogSize(prog, &logSize));
     std::vector<char> log(logSize);
     NVRTC_SAFE_CALL(nvrtcGetProgramLog(prog, &log[0]));
-    if (verbose) std::cout << log.data();
+    logger->debug("Compilation log: {}", log.data());
     if (compileResult != NVRTC_SUCCESS)
     {
         nvrtcDestroyProgram(&prog); //ignore possible errors
         printSourceCode(source);
-        if (!verbose) std::cout << log.data();
+        if (!logger->should_log(spdlog::level::debug))
+        {
+            logger->error("Compilation log: {}", log.data());
+        }
         std::string msg = std::string("Failed to compile kernel:\n") + log.data();
         throw ckl::cuda_error(msg.c_str());
     }
@@ -159,12 +163,6 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
     NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxSize));
     this->ptxData.resize(ptxSize);
     NVRTC_SAFE_CALL(nvrtcGetPTX(prog, this->ptxData.data()));
-
-#if 0
-    //test
-    std::string ptxStr(this->ptxData.begin(), this->ptxData.end());
-    std::cout << "\nPTX:\n" << ptxStr << "\n" << std::endl;
-#endif
 
     //get machine name
     const char* machineName;
@@ -181,11 +179,12 @@ detail::KernelStorage::KernelStorage(const std::string& kernelName,
     //delete program
     NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
 
-    loadPTX(verbose);
+    loadPTX();
 }
 
-detail::KernelStorage::KernelStorage(std::ifstream& i, bool verbose)
-    : module(nullptr)
+detail::KernelStorage::KernelStorage(std::ifstream& i, logger_t logger)
+    : logger(logger)
+    , module(nullptr)
     , function(nullptr)
     , minGridSize(0)
     , bestBlockSize(0)
@@ -220,22 +219,20 @@ detail::KernelStorage::KernelStorage(std::ifstream& i, bool verbose)
         human2machine[key] = value;
     }
 
-    loadPTX(verbose);
+    loadPTX();
 }
 
-void detail::KernelStorage::loadPTX(bool verbose)
+void detail::KernelStorage::loadPTX()
 {
-    if (verbose) {
-        std::cout << "Load module \"" << this->machineName << "\"" << std::endl;
-    }
+    logger->debug("Load module {}", this->machineName);
 
     //TEST:
     CUcontext ctx;
     CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
-    if (verbose) {
-        std::cout << "Current context: " << ctx << std::endl;
-        std::cout << "Current thread: " << std::this_thread::get_id() << std::endl;
-    }
+    std::thread::id threadId = std::this_thread::get_id();
+    logger->debug("Current context: {}, current thread: {}", 
+        reinterpret_cast<std::size_t>(ctx), 
+        *static_cast<unsigned int*>(static_cast<void*>(&threadId))); //ugly casting, but otherwise I can't print
 
     //load PTX
     unsigned int infoBufferSize = 1024;
@@ -260,12 +257,12 @@ void detail::KernelStorage::loadPTX(bool verbose)
     options.push_back(CU_JIT_LOG_VERBOSE);
     values.push_back(reinterpret_cast<void*>(logVerbose));
     auto err = cuModuleLoadDataEx(&this->module, this->ptxData.data(), options.size(), options.data(), values.data());
-    if (infoLogData[0] && verbose)
+    if (infoLogData[0])
     {
-        std::cout << infoLog.get() << std::endl;
+        logger->debug("Load PTX log: {}", infoLog.get());
     }
     if (errorLog[0]) {
-        std::cerr << "Compiler error: " << errorLog.get() << std::endl;
+        logger->error("PTX loading error: {}", errorLog.get());
     }
     CKL_SAFE_CALL(err);
 
@@ -273,25 +270,20 @@ void detail::KernelStorage::loadPTX(bool verbose)
     CKL_SAFE_CALL(cuModuleGetFunction(&this->function, this->module, this->machineName.data()));
     for (const auto& e : human2machine)
     {
-        if (verbose) {
-            std::cout << "Fetch address for constant variable \"" << e.first
-                << "\", machine name \"" << e.second << "\"" << std::endl;
-        }
+        logger->debug("Fetch address for constant variable {} with machine name {}",
+            e.first, e.second);
         CUdeviceptr addr;
         CKL_SAFE_CALL(cuModuleGetGlobal(&addr, nullptr, module, e.second.data()));
         constants[e.first] = addr;
-        if (verbose)
-            std::cout << "constant variable " << e.first << " has device pointer 0x"
-            << std::hex << addr << std::dec << std::endl;
+        logger->debug("Constant variable {} has device pointer {}",
+            e.first, addr);
     }
 
     CKL_SAFE_CALL(cuOccupancyMaxPotentialBlockSize(
         &minGridSize, &bestBlockSize, function, NULL, 0, 0));
 
-    if (verbose) {
-        std::cout << "Module \"" << this->machineName << "\" loaded successfully"
-            << ", block size: " << bestBlockSize << std::endl;
-    }
+    logger->debug("Module {} loaded successfully, block size: {}",
+        this->machineName, bestBlockSize);
 }
 
 detail::KernelStorage::~KernelStorage()
@@ -307,7 +299,8 @@ detail::KernelStorage::~KernelStorage()
         const char* pName;
         cuGetErrorName(err, &pName);
         std::stringstream ss;
-        std::cerr << "Cuda error " << pName << " when unloading module for kernel " << machineName << ":" << pStr << std::endl;
+        logger->error("CUDA error {} when unloading module for kernel {}",
+            pName, machineName);
     }
 }
 
@@ -396,22 +389,37 @@ void KernelFunction::callRaw(unsigned gridDimX, unsigned gridDimY, unsigned grid
     CKL_SAFE_CALL(cuLaunchKernel(fun(), gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, nullptr));
 }
 
+static std::shared_ptr<spdlog::logger> get_logger(std::shared_ptr<spdlog::logger> logger)
+{
+    //1. check parent
+    if (logger != nullptr) return logger;
 
-KernelLoader::KernelLoader()
+    //2. does a logger already exist?
+    logger = spdlog::get("ckl");
+    if (logger != nullptr) return logger;
+
+    //3. create new logger
+    logger = spdlog::stdout_color_mt("ckl");
+    assert(logger != nullptr);
+    return logger;
+}
+
+KernelLoader::KernelLoader(std::shared_ptr<spdlog::logger> logger)
+    : logger_(get_logger(logger))
 {
     //query compute capability
     cudaDeviceProp props {0};
     CKL_SAFE_CALL(cudaGetDeviceProperties(&props, 0));
     computeMajor_ = props.major;
     computeMinor_ = props.minor;
-    std::cout << "Compiling kernels for device '" << props.name << "' with compute capability " <<
-        props.major << "." << props.minor << std::endl;
+    logger_->info("Compiling kernels for device '{}' with compute capability {}.{}",
+        props.name, props.major, props.minor);
     computeArchitecture_ = internal::Format::format("--gpu-architecture=compute_%d%d", computeMajor_, computeMinor_);
 
 #ifdef CKL_NVCC_INCLUDE_DIR
-    std::cout << "NVCC include directory: " << CKL_STR(CKL_NVCC_INCLUDE_DIR) << std::endl;
+    logger_->debug("NVCC include directory: {}", CKL_STR(CKL_NVCC_INCLUDE_DIR));
 #else
-    std::cout << "Warning: no NVCC include directory specified. Compiling kernels will likely fail" << std::endl;
+    logger_->warn("No NVCC include directory specified. Compiling kernels will likely fail");
 #endif
 
     compileOptions_ = {
@@ -430,7 +438,7 @@ KernelLoader::KernelLoader()
 
     //query context
     CKL_SAFE_CALL(cuCtxGetCurrent(&ctx_));
-    std::cout << "Current CUDA Driver context: " << ctx_ << std::endl;
+    logger_->debug("Current CUDA Driver context: {}", reinterpret_cast<std::size_t>(ctx_));
 }
 
 KernelLoader::~KernelLoader()
@@ -442,6 +450,16 @@ KernelLoader& KernelLoader::Instance()
 {
     static KernelLoader INSTANCE;
     return INSTANCE;
+}
+
+std::shared_ptr<spdlog::logger> KernelLoader::getLogger() const
+{
+    return logger_;
+}
+
+void KernelLoader::setLogLevel(spdlog::level::level_enum level)
+{
+    logger_->set_level(level);
 }
 
 void KernelLoader::setFileLoader(const std::shared_ptr<IFileLoader>& loader)
@@ -466,7 +484,7 @@ void KernelLoader::setCacheDir(const std::filesystem::path& path)
 {
     cacheDirectory_ = path;
     reloadCudaKernels();
-    loadKernelCache(false);
+    loadKernelCache();
 }
 
 void KernelLoader::disableCudaCache()
@@ -517,8 +535,6 @@ std::optional<KernelFunction> KernelLoader::getKernel(
     const std::string& kernelName, const std::string& sourceCode,
     const std::vector<std::string>& constantNames, int flags)
 {
-    bool verbose = flags & CompileVerboseLogging;
-
     //check if we are in a multi-threaded environment
     CUcontext ctx;
     CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
@@ -527,15 +543,15 @@ std::optional<KernelFunction> KernelLoader::getKernel(
         //no context found during initialization, set this one as the default one
         ctx_ = ctx;
     }
-    if (ctx != ctx_ && verbose)
+    if (ctx != ctx_)
     {
-        std::cout << "Attempt to call getKernel() from a different thread or different context than where the KernelLoader was created from. " <<
-            "Expected context: " << ctx_ << ", current context: " << ctx << ". " <<
-            "Restore the old context now." << std::endl;
+        logger_->debug("Attempt to call getKernel() from a different thread or different context than where the KernelLoader was created from. "
+            "Expected context: {}, current context: {}. Restore the old context now.",
+            reinterpret_cast<std::size_t>(ctx_), reinterpret_cast<std::size_t>(ctx));
     }
     ContextRAIID contextRaiid(ctx != ctx_ ? ctx_ : nullptr);
 
-    loadKernelCache(verbose);
+    loadKernelCache();
 
     SHA1 sha;
     sha.update(kernelName);
@@ -559,7 +575,7 @@ std::optional<KernelFunction> KernelLoader::getKernel(
         try {
             const auto storage = std::make_shared<detail::KernelStorage>(
                 kernelName, includeFiles_, sourceCode, 
-                constantNames, opts, verbose);
+                constantNames, opts, logger_);
 
             kernelStorage_.emplace(kernelKey, storage);
             saveKernelCache();
@@ -571,7 +587,7 @@ std::optional<KernelFunction> KernelLoader::getKernel(
                 throw;
             }
             else {
-                std::cerr << "Unable to compile kernel: " << ex.what() << std::endl;
+                logger_->error("Unable to compile kernel: {}", ex.what());
                 reloadCudaKernels(); //so that in the next iteration, we can compile again
                 return {};
             }
@@ -596,18 +612,19 @@ void KernelLoader::saveKernelCache()
 
     if (!exists(cacheDirectory_)) {
         if (!create_directory(cacheDirectory_)) {
-            std::cerr << "Unable to create cache directory " << absolute(cacheDirectory_) << std::endl;
+            logger_->error("Unable to create cache directory {}", absolute(cacheDirectory_).string());
             return;
         }
-        else
-            std::cout << "Cache directory created at " << absolute(cacheDirectory_) << std::endl;
+        else {
+            logger_->info("Cache directory created at {}", absolute(cacheDirectory_).string());
+        }
     }
 
     fs::path cacheFile = cacheDirectory_ / (includeFilesHash_ + ".kernel");
     std::ofstream o(cacheFile, std::ofstream::binary);
     if (!o.is_open())
     {
-        std::cerr << "Unable to open cache file " << absolute(cacheFile) << " for writing" << std::endl;
+        logger_->error("Unable to open cache file {} for writing", cacheFile.string());
         return;
     }
     o.write(reinterpret_cast<const char*>(&KERNEL_CACHE_MAGIC), sizeof(int));
@@ -620,10 +637,10 @@ void KernelLoader::saveKernelCache()
         o.write(e.first.data(), kernelNameSize);
         e.second->save(o);
     }
-    std::cout << entrySize << " kernels written to the cache file " << cacheFile << std::endl;
+    logger_->debug("{} kernels written to the cache file", static_cast<int>(entrySize));
 }
 
-void KernelLoader::loadKernelCache(bool verbose)
+void KernelLoader::loadKernelCache()
 {
     if (!kernelStorage_.empty()) return; //already loaded
 
@@ -640,18 +657,18 @@ void KernelLoader::loadKernelCache(bool verbose)
    
     if (exists(cacheFile))
     {
-        std::cout << "Read from cache " << cacheFile << std::endl;
+        logger_->debug("Read from cache {}", cacheFile.string());
         std::ifstream i(cacheFile, std::ifstream::binary);
         if (!i.is_open())
         {
-            std::cerr << "Unable to open file" << std::endl;
+            logger_->error("Unable to open cache file {}", cacheFile.string());
             return;
         }
         unsigned int magic;
         i.read(reinterpret_cast<char*>(&magic), sizeof(int));
         if (magic != KERNEL_CACHE_MAGIC)
         {
-            std::cerr << "Invalid magic number, wrong file type or file is corrupted" << std::endl;
+            logger_->error("Invalid magic number, wrong file type or cache file is corrupted");
             return;
         }
         size_t entrySize;
@@ -664,10 +681,10 @@ void KernelLoader::loadKernelCache(bool verbose)
             kernelName.resize(kernelNameSize);
             i.read(kernelName.data(), kernelNameSize);
 
-            const auto storage = std::make_shared<detail::KernelStorage>(i, verbose);
+            const auto storage = std::make_shared<detail::KernelStorage>(i, logger_);
             kernelStorage_.emplace(kernelName, storage);
         }
-        std::cout << entrySize << " kernels loaded from cache" << std::endl;
+        logger_->debug("{} kernels loaded from the cache", entrySize);
     }
 }
 
