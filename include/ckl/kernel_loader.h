@@ -316,12 +316,26 @@ public:
      * In usual use cases, the global instance KernelLoader::Instance()
      * is probably the better choice to have a unified caching and file loading system.
      *
+     * If CUDA could not be initialized, 
+     *
      * \see KernelLoader::Instance()
      * \param logger the logger to use. If NULL, a console logger is used
      */
     explicit KernelLoader(logger_t logger = nullptr);
 
     ~KernelLoader();
+
+    /**
+     * Tests if CUDA is available.
+     * If this is false, all kernel calls will fail with an exception
+     * \return true iff CUDA is available.
+     */
+    [[nodiscard]] bool isCudaAvailable() const;
+
+    /**
+     * Tests if CUDA is available and if not, throw a ckl::cuda_error.
+     */
+    void checkCudaAvailable() const;
 
     /**
      * The global singleton instance
@@ -472,6 +486,7 @@ private:
     void loadKernelCache();
     static constexpr unsigned int KERNEL_CACHE_MAGIC = 0x61437543u; // CuCa
 
+    bool cudaAvailable_;
     CUcontext ctx_;
     int computeMajor_;
     int computeMinor_;

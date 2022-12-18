@@ -407,14 +407,17 @@ static std::shared_ptr<spdlog::logger> get_logger(std::shared_ptr<spdlog::logger
 
 KernelLoader::KernelLoader(std::shared_ptr<spdlog::logger> logger)
     : logger_(get_logger(logger))
+    , cudaAvailable_(false)
 {
     //query compute capability
     cudaDeviceProp props {0};
     auto retVal = cudaGetDeviceProperties(&props, 0);
     if (retVal == cudaErrorInsufficientDriver) {
+        logger_->error("Unable to initialize CUDA: Insufficient driver. Do you have a NVIDIA GPU and the driver installed?");
         return;
     }
     CKL_SAFE_CALL(retVal);
+    cudaAvailable_ = true;
     computeMajor_ = props.major;
     computeMinor_ = props.minor;
     logger_->info("Compiling kernels for device '{}' with compute capability {}.{}",
@@ -450,6 +453,20 @@ KernelLoader::~KernelLoader()
 {
     cleanup();
 }
+
+bool KernelLoader::isCudaAvailable() const
+{
+    return cudaAvailable_;
+}
+
+void KernelLoader::checkCudaAvailable() const
+{
+    if (!isCudaAvailable())
+    {
+        throw cuda_error("CUDA driver not initialized");
+    }
+}
+
 
 KernelLoader& KernelLoader::Instance()
 {
@@ -540,6 +557,8 @@ std::optional<KernelFunction> KernelLoader::getKernel(
     const std::string& kernelName, const std::string& sourceCode,
     const std::vector<std::string>& constantNames, int flags)
 {
+    checkCudaAvailable();
+
     //check if we are in a multi-threaded environment
     CUcontext ctx;
     CKL_SAFE_CALL(cuCtxGetCurrent(&ctx));
@@ -614,6 +633,7 @@ std::string KernelLoader::MainFile(const std::string& filename)
 void KernelLoader::saveKernelCache()
 {
     if (cacheDirectory_.empty()) return;
+    if (!cudaAvailable_) return;
 
     if (!exists(cacheDirectory_)) {
         if (!create_directory(cacheDirectory_)) {
@@ -647,6 +667,7 @@ void KernelLoader::saveKernelCache()
 
 void KernelLoader::loadKernelCache()
 {
+    checkCudaAvailable();
     if (!kernelStorage_.empty()) return; //already loaded
 
     //load cuda source files and updates the SHA1 hash
