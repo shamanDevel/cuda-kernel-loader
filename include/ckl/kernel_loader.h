@@ -7,15 +7,9 @@
 #include <vector>
 #include <regex>
 #include <memory>
+#include <spdlog/fwd.h>
 
 #include "common.h"
-
-namespace spdlog {
-class logger;
-namespace level {
-enum level_enum : int;
-}
-}
 
 CKL_NAMESPACE_BEGIN
 
