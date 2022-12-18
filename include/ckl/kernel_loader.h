@@ -7,7 +7,7 @@
 #include <vector>
 #include <regex>
 #include <memory>
-#include <spdlog/spdlog.h>
+#include <spdlog/fwd.h>
 
 #include "common.h"
 

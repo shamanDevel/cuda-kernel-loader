@@ -6,6 +6,7 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
+#include <spdlog/spdlog.h>
 #include "spdlog/sinks/stdout_color_sinks.h"
 
 #include "sha1.h"
@@ -409,7 +410,11 @@ KernelLoader::KernelLoader(std::shared_ptr<spdlog::logger> logger)
 {
     //query compute capability
     cudaDeviceProp props {0};
-    CKL_SAFE_CALL(cudaGetDeviceProperties(&props, 0));
+    auto retVal = cudaGetDeviceProperties(&props, 0);
+    if (retVal == cudaErrorInsufficientDriver) {
+        return;
+    }
+    CKL_SAFE_CALL(retVal);
     computeMajor_ = props.major;
     computeMinor_ = props.minor;
     logger_->info("Compiling kernels for device '{}' with compute capability {}.{}",
