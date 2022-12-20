@@ -338,9 +338,14 @@ public:
     void checkCudaAvailable() const;
 
     /**
-     * The global singleton instance
+     * Returns the global singleton instance
      */
     static KernelLoader& Instance();
+
+    /**
+     * Deletes the global singleton instance
+     */
+    static void DeleteInstance();
 
     /**
      * Returns the logger instance used to report compile logs (debug) or errors
@@ -477,6 +482,8 @@ public:
     [[nodiscard]] int computeCapability() const { return computeMajor_; }
 
 private:
+
+    static std::unique_ptr<KernelLoader> INSTANCE;
 
     //Loads the CUDA source file
     //Returns true if the source files have changed
