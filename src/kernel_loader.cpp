@@ -412,8 +412,14 @@ KernelLoader::KernelLoader(std::shared_ptr<spdlog::logger> logger)
     //query compute capability
     cudaDeviceProp props {0};
     auto retVal = cudaGetDeviceProperties(&props, 0);
-    if (retVal == cudaErrorInsufficientDriver) {
+    if (retVal == cudaErrorInsufficientDriver)
+    {
         logger_->error("Unable to initialize CUDA: Insufficient driver. Do you have a NVIDIA GPU and the driver installed?");
+        return;
+    }
+    if (retVal == cudaErrorNoDevice)
+    {
+        logger_->error("Unable to initialize CUDA: No device found. Do you have a NVIDIA GPU and the driver installed?");
         return;
     }
     CKL_SAFE_CALL(retVal);
@@ -467,11 +473,20 @@ void KernelLoader::checkCudaAvailable() const
     }
 }
 
+std::unique_ptr<KernelLoader> KernelLoader::INSTANCE = {};
 
 KernelLoader& KernelLoader::Instance()
 {
-    static KernelLoader INSTANCE;
-    return INSTANCE;
+    if (!INSTANCE)
+    {
+        INSTANCE = std::make_unique<KernelLoader>();
+    }
+    return *INSTANCE;
+}
+
+void KernelLoader::DeleteInstance()
+{
+    INSTANCE = {};
 }
 
 std::shared_ptr<spdlog::logger> KernelLoader::getLogger() const
