@@ -110,6 +110,7 @@ set(CKL_HEADERS
     
 set(CKL_SOURCES
     src/kernel_loader.cpp
+    src/errors.cpp
     src/sha1.h
     src/sha1.cpp)
 
