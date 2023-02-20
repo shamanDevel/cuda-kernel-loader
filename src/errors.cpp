@@ -94,8 +94,8 @@ void internal::ErrorHelpers::cudaSafeCall(CUresult err, const char* file, const 
     if (!evalError(err, file, line)) return;
 #if CKL_ALWAYS_SYNC == 1
     // insert a device-sync
-    err = cudaDeviceSynchronize();
-    evalError(err, file, line);
+    cudaError_t err2 = cudaDeviceSynchronize();
+    evalError(err2, file, line);
 #endif
 }
 
@@ -104,8 +104,8 @@ bool internal::ErrorHelpers::cudaSafeCallNoThrow(CUresult err, const char* file,
     if (!evalErrorNoThrow(err, file, line)) return false;
 #if CKL_ALWAYS_SYNC == 1
     // insert a device-sync
-    err = cudaDeviceSynchronize();
-    if (!evalErrorNoThrow(err, file, line)) return false;
+    cudaError_t err2 = cudaDeviceSynchronize();
+    if (!evalErrorNoThrow(err2, file, line)) return false;
 #endif
     return true;
 }
