@@ -42,7 +42,7 @@ private:
             auto f = fs_.open(currentPath + e.filename());
             std::string content(f.size(), '\0');
             memcpy(content.data(), f.begin(), f.size());
-            files.push_back({ e.filename(), content });
+            files.push_back({ currentPath + e.filename(), content });
         }
         else
         {
